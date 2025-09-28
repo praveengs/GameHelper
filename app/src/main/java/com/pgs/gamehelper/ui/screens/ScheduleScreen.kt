@@ -1,11 +1,13 @@
 package com.pgs.gamehelper.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,39 +39,53 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.pgs.gamehelper.data.CompletedGamesRepository
+import com.pgs.gamehelper.models.SessionsViewModel
 import com.pgs.gamehelper.schedule.Scheduler
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleScreen(navController: NavController) {
-    val context = LocalContext.current
+fun ScheduleScreen(
+    context: Context,
+    navController: NavController,
+    sessionId: String,
+    sessionsViewModel: SessionsViewModel = viewModel()
+) {
     val scope = rememberCoroutineScope()
+    val sessions by sessionsViewModel.sessions.collectAsState()
+    val session = sessions.find { it.id == sessionId }
 
-    val players =
-        navController.previousBackStackEntry?.savedStateHandle?.get<List<String>>("players")
-            ?: emptyList()
-    val courts =
-        navController.previousBackStackEntry?.savedStateHandle?.get<Int>("courts") ?: 1
-    val hours =
-        navController.previousBackStackEntry?.savedStateHandle?.get<Int>("hours") ?: 2
-    val gameDuration =
-        navController.previousBackStackEntry?.savedStateHandle?.get<Int>("gameDuration") ?: 10
+    if (session == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) { Text("Session not found") }
+        return
+    }
+    val players = session.players
+    val courts = session.courts
+    val totalGames = session.hours * 60 / session.gameDuration
 
-    val totalGames = (hours * 60) / gameDuration
+
     // Create a unique session ID (but add reshuffle seed later)
     var reshuffleSeed by remember { mutableStateOf(System.currentTimeMillis()) }
-    var schedule by remember { mutableStateOf(Scheduler.generateSchedule(players, courts, totalGames)) }
+    var schedule by remember {
+        mutableStateOf(
+            Scheduler.generateSchedule(
+                players,
+                courts,
+                totalGames
+            )
+        )
+    }
 
     // Create a unique session ID
-    val sessionId = remember(players, courts, hours, gameDuration, reshuffleSeed) {
-        (players.sorted()
-            .joinToString(",") + "|$courts|$hours|$gameDuration|$reshuffleSeed").hashCode()
-            .toString()
+    val sessionId = remember(sessionId, reshuffleSeed) {
+        sessionId
     }
     // Track completed games
     var completedGames by remember { mutableStateOf(setOf<Int>()) }
@@ -99,7 +116,7 @@ fun ScheduleScreen(navController: NavController) {
                     IconButton(onClick = {
                         // Reshuffle schedule
                         reshuffleSeed = System.currentTimeMillis()
-                        schedule = Scheduler.generateSchedule (players, courts, totalGames)
+                        schedule = Scheduler.generateSchedule(players, courts, totalGames)
                         completedGames = emptySet()
                         scope.launch {
                             CompletedGamesRepository.saveCompletedGames(

@@ -1,26 +1,51 @@
 package com.pgs.gamehelper.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.pgs.gamehelper.models.PlayerViewModel
+import com.pgs.gamehelper.models.SessionsViewModel
+import kotlinx.coroutines.launch
 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSelectionScreen(
     navController: NavController,
-    viewModel: PlayerViewModel = viewModel()
+    sessionViewModel: SessionsViewModel,
+    playerViewModel: PlayerViewModel = viewModel(),
 ) {
-    val players by viewModel.players.collectAsState()
+    val players by playerViewModel.players.collectAsState()
     var selectedPlayers by remember { mutableStateOf(setOf<String>()) }
     var newPlayerName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     val allSelected = players.isNotEmpty() && selectedPlayers.size == players.size
 
@@ -95,7 +120,7 @@ fun PlayerSelectionScreen(
                 Button(
                     onClick = {
                         if (newPlayerName.isNotBlank()) {
-                            viewModel.addPlayer(newPlayerName.trim())
+                            playerViewModel.addPlayer(newPlayerName.trim())
                             selectedPlayers = selectedPlayers + newPlayerName.trim()
                             newPlayerName = ""
                         }
@@ -109,20 +134,47 @@ fun PlayerSelectionScreen(
 
             Button(
                 onClick = {
-                    val courts = navController.previousBackStackEntry
-                        ?.savedStateHandle?.get<Int>("courts") ?: 1
-                    val hours = navController.previousBackStackEntry
-                        ?.savedStateHandle?.get<Int>("hours") ?: 2
-                    val gameDuration = navController.previousBackStackEntry
-                        ?.savedStateHandle?.get<Int>("gameDuration") ?: 10
-
-                    navController.currentBackStackEntry?.savedStateHandle?.apply {
-                        set("players", selectedPlayers.toList())
-                        set("courts", courts)
-                        set("hours", hours)
-                        set("gameDuration", gameDuration)
+                    scope.launch {
+                        val tempSession = sessionViewModel.getTempSession()
+                        if (tempSession != null) {
+                            sessionViewModel.addSession(
+                                players = selectedPlayers.toList(),
+                                courts = tempSession.courts,
+                                hours = tempSession.hours,
+                                gameDuration = tempSession.gameDuration
+                            ) { session ->
+                                navController.navigate(NavRoutes.Schedule(session.id).route) {
+                                    popUpTo(NavRoutes.Sessions.route) { inclusive = false }
+                                }
+                            }
+                        } else {
+                            println("DEBUG: Temp session is null, navigating to Sessions")
+                            // Fallback navigation if temp session is null
+                            navController.navigate(NavRoutes.Sessions.route)
+                        }
                     }
-                    navController.navigate(NavRoutes.Schedule.route)
+//                    println("DEBUG: Next button clicked! Selected players: ${selectedPlayers.size}")
+//                    val tempSession = sessionViewModel.getTempSession()
+//                    println("DEBUG: Temp session: $tempSession")
+//
+//                    if (tempSession != null) {
+//                        sessionViewModel.addSession(
+//                            players = selectedPlayers.toList(),
+//                            courts = tempSession.courts,
+//                            hours = tempSession.hours,
+//                            gameDuration = tempSession.gameDuration
+//                        ) { session ->
+//                            println("DEBUG: Session created with ID: ${session.id}")
+//                            // Navigate to Schedule screen with the session ID
+//                            navController.navigate("schedule/${session.id}") {
+//                                popUpTo(NavRoutes.Sessions.route) { inclusive = false }
+//                            }
+//                        }
+//                    } else {
+//                        println("DEBUG: Temp session is null, navigating to Sessions")
+//                        // Fallback navigation if temp session is null
+//                        navController.navigate(NavRoutes.Sessions.route)
+//                    }
                 },
                 enabled = selectedPlayers.size >= 4, // need minimum 4 players for doubles
                 modifier = Modifier.fillMaxWidth()

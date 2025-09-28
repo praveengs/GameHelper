@@ -49,7 +49,7 @@ fun HomeScreen(navController: NavController) {
                     contentDescription = "Schedule"
                 )
             },
-            onClick = { navController.navigate(NavRoutes.CourtConfig.route) }
+            onClick = { navController.navigate(NavRoutes.Sessions.route) }
         )
     }
 }
