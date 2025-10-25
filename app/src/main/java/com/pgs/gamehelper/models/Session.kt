@@ -7,5 +7,7 @@ data class Session(
     val hours: Int,
     val gameDuration: Int,
     val startedAt: String, // formatted datetime string
-    val completedGames: Set<Int> = emptySet()
+    val completedGames: Set<Int> = emptySet(),
+    val isLocked: Boolean = false,
+    val reshuffleSeed: Long = 0L
 )

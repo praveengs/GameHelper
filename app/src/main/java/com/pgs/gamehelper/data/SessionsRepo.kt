@@ -27,7 +27,9 @@ object SessionsRepository {
                 s.hours,
                 s.gameDuration,
                 s.startedAt,
-                s.completedGames.joinToString(",")
+                s.completedGames.joinToString(","),
+                s.isLocked,
+                s.reshuffleSeed
             ).joinToString(";")
         }
     }
@@ -36,7 +38,7 @@ object SessionsRepository {
         if (serialized.isBlank()) return emptyList()
         return serialized.split("||").mapNotNull { sessionStr ->
             val parts = sessionStr.split(";")
-            if (parts.size < 7) return@mapNotNull null
+            if (parts.size < 9) return@mapNotNull null
             Session(
                 id = parts[0],
                 players = if (parts[1].isBlank()) emptyList() else parts[1].split(","),
@@ -45,7 +47,9 @@ object SessionsRepository {
                 gameDuration = parts[4].toInt(),
                 startedAt = parts[5],
                 completedGames = if (parts[6].isBlank()) emptySet() else parts[6].split(",")
-                    .map { it.toInt() }.toSet()
+                    .map { it.toInt() }.toSet(),
+                isLocked = parts[7].toBoolean(),
+                reshuffleSeed = parts[8].toLong()
             )
         }
     }

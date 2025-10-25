@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,20 +33,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.pgs.gamehelper.data.CompletedGamesRepository
 import com.pgs.gamehelper.models.SessionsViewModel
 import com.pgs.gamehelper.schedule.Scheduler
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +51,6 @@ fun ScheduleScreen(
     sessionId: String,
     sessionsViewModel: SessionsViewModel = viewModel()
 ) {
-    val scope = rememberCoroutineScope()
     val sessions by sessionsViewModel.sessions.collectAsState()
     val session = sessions.find { it.id == sessionId }
 
@@ -66,42 +61,32 @@ fun ScheduleScreen(
         ) { Text("Session not found") }
         return
     }
+
+    // If this is a new session or an older one without a seed, generate one and save it.
+    LaunchedEffect(session.id, session.reshuffleSeed) {
+        if (session.reshuffleSeed == 0L) {
+            sessionsViewModel.updateSession(session.copy(reshuffleSeed = System.currentTimeMillis()))
+        }
+    }
+
     val players = session.players
     val courts = session.courts
     val totalGames = session.hours * 60 / session.gameDuration
 
-
-    // Create a unique session ID (but add reshuffle seed later)
-    var reshuffleSeed by remember { mutableStateOf(System.currentTimeMillis()) }
-    var schedule by remember {
-        mutableStateOf(
-            Scheduler.generateSchedule(
-                players,
-                courts,
-                totalGames
-            )
-        )
+    val schedule = remember(session.reshuffleSeed) {
+        if (session.reshuffleSeed == 0L) {
+            emptyList()
+        } else {
+            Scheduler.generateSchedule(players, courts, totalGames, session.reshuffleSeed)
+        }
     }
 
-    // Create a unique session ID
-    val sessionId = remember(sessionId, reshuffleSeed) {
-        sessionId
+    val playerStats = remember(schedule) {
+        Scheduler.calculatePlayerStats(schedule, players)
     }
-    // Track completed games
-    var completedGames by remember { mutableStateOf(setOf<Int>()) }
-    // Load saved progress
-    LaunchedEffect(sessionId) {
-        CompletedGamesRepository.getCompletedGames(context, sessionId)
-            .collect { saved ->
-                completedGames = saved
-            }
-    }
-
-    val playerStats = Scheduler.calculatePlayerStats(schedule, players)
 
     Scaffold(
         topBar = {
-
             TopAppBar(
                 title = { Text("Schedule") },
                 navigationIcon = {
@@ -113,23 +98,32 @@ fun ScheduleScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        // Reshuffle schedule
-                        reshuffleSeed = System.currentTimeMillis()
-                        schedule = Scheduler.generateSchedule(players, courts, totalGames)
-                        completedGames = emptySet()
-                        scope.launch {
-                            CompletedGamesRepository.saveCompletedGames(
-                                context,
-                                sessionId,
-                                completedGames
+                    if (!session.isLocked) {
+                        IconButton(onClick = {
+                            // Reshuffle schedule
+                            val newSeed = System.currentTimeMillis()
+                            sessionsViewModel.updateSession(
+                                session.copy(
+                                    reshuffleSeed = newSeed,
+                                    completedGames = emptySet()
+                                )
+                            )
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Reshuffle"
                             )
                         }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Reshuffle"
-                        )
+                        IconButton(onClick = {
+                            sessionsViewModel.updateSession(
+                                session.copy(isLocked = true)
+                            )
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Lock Schedule"
+                            )
+                        }
                     }
                 })
         }
@@ -141,11 +135,11 @@ fun ScheduleScreen(
         ) {
             // Progress tracker
             Text(
-                "Progress: ${completedGames.size} of $totalGames games completed",
+                "Progress: ${session.completedGames.size} of $totalGames games completed",
                 style = MaterialTheme.typography.bodyLarge
             )
             LinearProgressIndicator(
-                progress = { (completedGames.size.toFloat() / totalGames).coerceIn(0f, 1f) },
+                progress = { (session.completedGames.size.toFloat() / totalGames).coerceIn(0f, 1f) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
@@ -178,19 +172,15 @@ fun ScheduleScreen(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Checkbox(
-                                    checked = completedGames.contains(gameIndex),
+                                    checked = session.completedGames.contains(gameIndex),
                                     onCheckedChange = { checked ->
-                                        completedGames = completedGames.toMutableSet().apply {
-                                            if (checked) add(gameIndex) else remove(gameIndex)
-                                        }
-                                        // Save progress
-                                        scope.launch {
-                                            CompletedGamesRepository.saveCompletedGames(
-                                                context,
-                                                sessionId,
-                                                completedGames
-                                            )
-                                        }
+                                        val updatedGames =
+                                            session.completedGames.toMutableSet().apply {
+                                                if (checked) add(gameIndex) else remove(gameIndex)
+                                            }
+                                        sessionsViewModel.updateSession(
+                                            session.copy(completedGames = updatedGames)
+                                        )
                                     }
                                 )
                             }

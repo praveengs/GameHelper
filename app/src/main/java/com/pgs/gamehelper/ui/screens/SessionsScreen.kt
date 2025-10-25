@@ -104,8 +104,9 @@ fun SessionCard(
 ) {
     val totalGames = session.hours * 60 / session.gameDuration
 
-    val completed = CompletedGamesRepository.getCompletedGames(context, session.id)
-        .collectAsState(initial = emptySet()).value.size
+//    val completed = CompletedGamesRepository.getCompletedGames(context, session.id)
+//        .collectAsState(initial = emptySet()).value.size
+    val completed = session.completedGames.size
 
     val progress = if (totalGames > 0) (completed * 100 / totalGames) else 0
 
