@@ -92,4 +92,12 @@ object SessionsRepository {
         val newList = current.map { if (it.id == updated.id) updated else it }
         saveSessions(context, newList)
     }
+
+    suspend fun removeSession(context: Context, sessionId: String) {
+        val current = getSessions(context)
+            .map { it }
+            .firstOrNull() ?: emptyList()
+        val newList = current.filterNot { it.id == sessionId }
+        saveSessions(context, newList)
+    }
 }
