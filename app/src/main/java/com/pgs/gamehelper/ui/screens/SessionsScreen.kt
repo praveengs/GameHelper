@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.pgs.gamehelper.data.CompletedGamesRepository
 import com.pgs.gamehelper.models.Session
 import com.pgs.gamehelper.models.SessionsViewModel
 import com.pgs.gamehelper.schedule.Scheduler
@@ -40,7 +41,7 @@ import com.pgs.gamehelper.schedule.Scheduler
 fun SessionsScreen(
     context: Context,
     navController: NavController,
-    sessionViewModel: SessionsViewModel = viewModel(factory = SessionsViewModel.Factory(context))
+    sessionViewModel: SessionsViewModel = viewModel()
 ) {
     val sessions by sessionViewModel.sessions.collectAsState()
 
@@ -75,6 +76,7 @@ fun SessionsScreen(
             ) {
                 items(sessions) { session ->
                     SessionCard(
+                        context = context,
                         session = session,
                         onClick = { navController.navigate(NavRoutes.Schedule(session.id).route) }
                     )
@@ -85,14 +87,12 @@ fun SessionsScreen(
 }
 
 @Composable
-fun SessionCard(session: Session, onClick: () -> Unit) {
-    val totalGames = Scheduler.generateSchedule(
-        session.players,
-        session.courts,
-        (session.hours * 60) / session.gameDuration
-    ).size
+fun SessionCard(context: Context, session: Session, onClick: () -> Unit) {
+    val totalGames = session.hours * 60 / session.gameDuration
 
-    val completed = session.completedGames.size
+    val completed = CompletedGamesRepository.getCompletedGames(context, session.id)
+        .collectAsState(initial = emptySet()).value.size
+
     val progress = if (totalGames > 0) (completed * 100 / totalGames) else 0
 
     Card(

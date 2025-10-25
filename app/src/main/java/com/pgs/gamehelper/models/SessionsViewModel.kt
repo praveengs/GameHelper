@@ -49,7 +49,7 @@ class SessionsViewModel(private val context: Context) : ViewModel() {
             onAdded(session)
         }
     }
-
+    
     fun updateSession(updated: Session) {
         viewModelScope.launch {
             SessionsRepository.updateSession(context, updated)
