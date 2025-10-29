@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,6 +66,7 @@ fun PlayerManagerScreen(
         },
         bottomBar = {
             AddPlayerBottomBar(
+                modifier = Modifier.windowInsetsPadding(WindowInsets.ime),
                 playerName = newPlayerName,
                 onPlayerNameChange = { newPlayerName = it },
                 onAddPlayer = {
@@ -106,7 +110,7 @@ fun PlayerManagerScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -164,12 +168,13 @@ fun PlayerItem(
 
 @Composable
 fun AddPlayerBottomBar(
+    modifier: Modifier = Modifier,
     playerName: String,
     onPlayerNameChange: (String) -> Unit,
     onAddPlayer: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(8.dp),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     ) {

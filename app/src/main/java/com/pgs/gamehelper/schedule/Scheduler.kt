@@ -15,6 +15,7 @@ object Scheduler {
         val random = Random(seed)
 
         val playerRestCounts = players.associateWith { 0 }.toMutableMap()
+        var lastGamePairs = emptySet<Set<String>>()
 
         val numToRest = players.size - (courts * 4)
 
@@ -31,17 +32,64 @@ object Scheduler {
                 playerRestCounts[it] = playerRestCounts.getValue(it) + 1
             }
 
-            val playingPlayers = (players - restingPlayers).shuffled(random).toMutableList()
+            val playingPlayers = (players - restingPlayers).toMutableList()
+            var gameMatches = emptyList<Match>()
+            var currentPairs = emptySet<Set<String>>()
+            var foundPermutation = false
 
-            val gameMatches = mutableListOf<Match>()
-            repeat(courts) {
-                if (playingPlayers.size >= 4) {
-                    val teamA = listOf(playingPlayers.removeAt(0), playingPlayers.removeAt(0))
-                    val teamB = listOf(playingPlayers.removeAt(0), playingPlayers.removeAt(0))
-                    gameMatches.add(Match(teamA, teamB, resting = restingPlayers))
+            // Attempt to find a permutation of players that doesn't result in consecutive pairs.
+            for (attempt in 1..100) {
+                val shuffledPlayingPlayers = playingPlayers.shuffled(random).toMutableList()
+                val tempMatches = mutableListOf<Match>()
+                val tempPairs = mutableSetOf<Set<String>>()
+                var hasConsecutive = false
+
+                for (c in 1..courts) {
+                    if (shuffledPlayingPlayers.size >= 4) {
+                        val teamA = listOf(shuffledPlayingPlayers.removeAt(0), shuffledPlayingPlayers.removeAt(0))
+                        val teamB = listOf(shuffledPlayingPlayers.removeAt(0), shuffledPlayingPlayers.removeAt(0))
+                        val pairA = teamA.toSet()
+                        val pairB = teamB.toSet()
+
+                        if (lastGamePairs.contains(pairA) || lastGamePairs.contains(pairB)) {
+                            hasConsecutive = true
+                            break // Exit court generation for this attempt
+                        }
+                        tempMatches.add(Match(teamA, teamB, resting = restingPlayers))
+                        tempPairs.add(pairA)
+                        tempPairs.add(pairB)
+                    }
+                }
+
+                if (!hasConsecutive) {
+                    gameMatches = tempMatches
+                    currentPairs = tempPairs
+                    foundPermutation = true
+                    break // Exit attempt loop
                 }
             }
+
+            // If no non-consecutive permutation is found after 100 attempts, use the original logic for this game.
+            if (!foundPermutation) {
+                val shuffledPlayingPlayers = playingPlayers.shuffled(random).toMutableList()
+                val tempMatches = mutableListOf<Match>()
+                val tempPairs = mutableSetOf<Set<String>>()
+
+                repeat(courts) {
+                    if (shuffledPlayingPlayers.size >= 4) {
+                        val teamA = listOf(shuffledPlayingPlayers.removeAt(0), shuffledPlayingPlayers.removeAt(0))
+                        val teamB = listOf(shuffledPlayingPlayers.removeAt(0), shuffledPlayingPlayers.removeAt(0))
+                        tempMatches.add(Match(teamA, teamB, resting = restingPlayers))
+                        tempPairs.add(teamA.toSet())
+                        tempPairs.add(teamB.toSet())
+                    }
+                }
+                gameMatches = tempMatches
+                currentPairs = tempPairs
+            }
+
             schedule.add(gameMatches)
+            lastGamePairs = currentPairs
         }
 
         return schedule
