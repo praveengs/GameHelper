@@ -23,6 +23,7 @@ import com.pgs.gamehelper.ui.screens.NavRoutes
 import com.pgs.gamehelper.ui.screens.PlayerManagerScreen
 import com.pgs.gamehelper.ui.screens.PlayerSelectionScreen
 import com.pgs.gamehelper.ui.screens.ScheduleScreen
+import com.pgs.gamehelper.ui.screens.ScoreEntryScreen
 import com.pgs.gamehelper.ui.screens.SessionsScreen
 import com.pgs.gamehelper.ui.theme.GameHelperTheme
 
@@ -65,6 +66,22 @@ private fun GameHelper() {
                 val sessionId =
                     backStackEntry.arguments?.getString("sessionId")!!
                 ScheduleScreen(context, navController, sessionId, sessionsViewModel)
+            }
+            composable(
+                NavRoutes.ScoreEntry.routePattern,
+                arguments = listOf(
+                    navArgument("sessionId") { type = NavType.StringType },
+                    navArgument("matchId") { type = NavType.StringType },
+                    navArgument("teamA") { type = NavType.StringType },
+                    navArgument("teamB") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val sessionId = backStackEntry.arguments?.getString("sessionId")!!
+                val matchId = backStackEntry.arguments?.getString("matchId")!!
+                val teamA = backStackEntry.arguments?.getString("teamA")?.split(",")!!
+                val teamB = backStackEntry.arguments?.getString("teamB")?.split(",")!!
+
+                ScoreEntryScreen(navController, sessionId, matchId, teamA, teamB, sessionsViewModel)
             }
         }
     }

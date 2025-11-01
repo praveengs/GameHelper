@@ -6,11 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -19,6 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -27,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -39,10 +45,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.pgs.gamehelper.R
 import com.pgs.gamehelper.models.Match
+import com.pgs.gamehelper.models.MatchResult
 import com.pgs.gamehelper.models.PlayerStats
 import com.pgs.gamehelper.models.Session
 import com.pgs.gamehelper.models.SessionsViewModel
@@ -100,7 +110,8 @@ fun ScheduleScreen(
                     sessionsViewModel.updateSession(
                         session.copy(
                             reshuffleSeed = newSeed,
-                            completedGames = emptySet()
+                            completedGames = emptySet(),
+                            matchResults = emptyMap()
                         )
                     )
                 },
@@ -121,6 +132,13 @@ fun ScheduleScreen(
                     if (isCompleted) add(gameIndex) else remove(gameIndex)
                 }
                 sessionsViewModel.updateSession(session.copy(completedGames = updatedGames))
+            },
+            onScoreClick = { matchId, teamA, teamB ->
+                val teamAString = teamA.joinToString(",")
+                val teamBString = teamB.joinToString(",")
+                navController.navigate(
+                    "score_entry/${session.id}/$matchId/$teamAString/$teamBString"
+                )
             }
         )
     }
@@ -133,7 +151,8 @@ private fun ScheduleScreenContent(
     totalGames: Int,
     schedule: List<List<Match>>,
     playerStats: Map<String, PlayerStats>,
-    onGameCompletedChange: (Int, Boolean) -> Unit
+    onGameCompletedChange: (Int, Boolean) -> Unit,
+    onScoreClick: (String, List<String>, List<String>) -> Unit
 ) {
     Column(
         modifier = modifier
@@ -150,8 +169,14 @@ private fun ScheduleScreenContent(
             modifier = Modifier.weight(1f),
             schedule = schedule,
             session = session,
-            onGameCompletedChange = onGameCompletedChange
+            onGameCompletedChange = onGameCompletedChange,
+            onScoreClick = onScoreClick
         )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Game stats summary
+        GameStats(session = session)
 
         Spacer(Modifier.height(16.dp))
 
@@ -219,16 +244,35 @@ private fun PlayerStats(playerStats: Map<String, PlayerStats>) {
 }
 
 @Composable
+private fun GameStats(session: Session) {
+    val totalShuttles = session.matchResults.values.sumOf { it.shuttlesUsed }
+    if (totalShuttles > 0) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(4.dp)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Game Stats", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text("Total shuttles used: $totalShuttles")
+            }
+        }
+    }
+}
+
+@Composable
 private fun GameScheduleList(
     modifier: Modifier = Modifier,
     schedule: List<List<Match>>,
     session: Session,
-    onGameCompletedChange: (Int, Boolean) -> Unit
+    onGameCompletedChange: (Int, Boolean) -> Unit,
+    onScoreClick: (String, List<String>, List<String>) -> Unit
 ) {
     LazyColumn(
         modifier = modifier
     ) {
         itemsIndexed(schedule) { gameIndex, courtsSchedule ->
+            val matchIdPrefix = "${session.id}-G$gameIndex"
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -257,7 +301,16 @@ private fun GameScheduleList(
                     Spacer(Modifier.height(8.dp))
 
                     courtsSchedule.forEachIndexed { courtIndex, match ->
-                        GameMatchRow(courtIndex, match)
+                        val matchId = "$matchIdPrefix-C$courtIndex"
+                        GameMatchRow(
+                            courtIndex = courtIndex,
+                            match = match,
+                            isSessionLocked = session.isLocked,
+                            matchResult = session.matchResults[matchId],
+                            onScoreClick = {
+                                onScoreClick(matchId, match.teamA, match.teamB)
+                            }
+                        )
                     }
                 }
             }
@@ -266,41 +319,143 @@ private fun GameScheduleList(
 }
 
 @Composable
-private fun GameMatchRow(courtIndex: Int, match: Match) {
+private fun GameMatchRow(
+    courtIndex: Int,
+    match: Match,
+    isSessionLocked: Boolean,
+    matchResult: MatchResult?,
+    onScoreClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 8.dp) // Increased vertical padding for more separation
     ) {
-        Text(
-            "Court ${courtIndex + 1}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // --- Top Row: Court Info and Score Button ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Court ${courtIndex + 1}",
+                style = MaterialTheme.typography.titleSmall, // Made it slightly smaller but still prominent
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(
+                onClick = onScoreClick,
+                enabled = isSessionLocked,
+                // Reduced padding to make the button more compact
+                contentPadding = ButtonDefaults.ContentPadding
+            ) {
+                Text("Score")
+            }
+        }
+
+        Spacer(Modifier.height(8.dp)) // Add space before the match details
+
+        // --- Middle Row: Teams and Scores ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Team A
+            MatchTeam(
+                players = match.teamA,
+                score = matchResult?.teamAScore,
+                alignment = Arrangement.Start
+            )
+
+            Text("vs", style = MaterialTheme.typography.bodySmall)
+
+            // Team B
+            MatchTeam(
+                players = match.teamB,
+                score = matchResult?.teamBScore,
+                alignment = Arrangement.End
+            )
+        }
+
+        // --- Bottom Row: Resting players and Shuttle count ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                PlayerTag(match.teamA[0])
-                PlayerTag(match.teamA[1])
+            // Resting players (only shows if there are any)
+            if (match.resting.isNotEmpty()) {
+                Text(
+                    text = "Rest: ${match.resting.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Spacer(modifier = Modifier.weight(1f)) // Fills space if no one is resting
             }
-            Text("vs", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                PlayerTag(match.teamB[0])
-                PlayerTag(match.teamB[1])
+
+            // Shuttle count (only shows if score has been entered)
+            if (matchResult != null && matchResult.shuttlesUsed > 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_shuttle),
+                        contentDescription = "Shuttle icon",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp) // Made icon smaller to be less intrusive
+                    )
+                    Text(
+                        text = "${matchResult.shuttlesUsed}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
-        if (match.resting.isNotEmpty()) {
-            Text(
-                "Resting: ${match.resting.joinToString()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    }
+}
+
+
+/**
+ * A new composable to display a team's players and score.
+ * This cleans up the GameMatchRow logic.
+ */
+@Composable
+private fun RowScope.MatchTeam(
+    players: List<String>,
+    score: Int?,
+    alignment: Arrangement.Horizontal
+) {
+    Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = alignment
+    ) {
+        // Player Tags
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Logic to handle layout based on alignment
+            if (alignment == Arrangement.End) {
+                PlayerTag(name = players[0])
+                PlayerTag(name = players[1])
+            } else {
+                PlayerTag(name = players[0])
+                PlayerTag(name = players[1])
+            }
         }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Score
+        Text(
+            text = score?.toString() ?: "", // Show empty string if score is null
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(32.dp) // Fixed width to ensure alignment
+        )
     }
 }
 
