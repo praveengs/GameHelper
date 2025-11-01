@@ -45,6 +45,7 @@ fun ScoreEntryScreen(
     var shuttlesUsed by remember { mutableStateOf(existingResult.shuttlesUsed) }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime),
         topBar = {
             TopAppBar(
                 title = { Text("Enter Score") },
