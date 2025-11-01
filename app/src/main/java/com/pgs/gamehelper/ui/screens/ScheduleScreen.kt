@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -39,10 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.pgs.gamehelper.R
 import com.pgs.gamehelper.models.Match
+import com.pgs.gamehelper.models.MatchResult
 import com.pgs.gamehelper.models.PlayerStats
 import com.pgs.gamehelper.models.Session
 import com.pgs.gamehelper.models.SessionsViewModel
@@ -100,7 +105,8 @@ fun ScheduleScreen(
                     sessionsViewModel.updateSession(
                         session.copy(
                             reshuffleSeed = newSeed,
-                            completedGames = emptySet()
+                            completedGames = emptySet(),
+                            matchResults = emptyMap()
                         )
                     )
                 },
@@ -121,6 +127,13 @@ fun ScheduleScreen(
                     if (isCompleted) add(gameIndex) else remove(gameIndex)
                 }
                 sessionsViewModel.updateSession(session.copy(completedGames = updatedGames))
+            },
+            onScoreClick = { matchId, teamA, teamB ->
+                val teamAString = teamA.joinToString(",")
+                val teamBString = teamB.joinToString(",")
+                navController.navigate(
+                    "score_entry/${session.id}/$matchId/$teamAString/$teamBString"
+                )
             }
         )
     }
@@ -133,7 +146,8 @@ private fun ScheduleScreenContent(
     totalGames: Int,
     schedule: List<List<Match>>,
     playerStats: Map<String, PlayerStats>,
-    onGameCompletedChange: (Int, Boolean) -> Unit
+    onGameCompletedChange: (Int, Boolean) -> Unit,
+    onScoreClick: (String, List<String>, List<String>) -> Unit
 ) {
     Column(
         modifier = modifier
@@ -150,8 +164,14 @@ private fun ScheduleScreenContent(
             modifier = Modifier.weight(1f),
             schedule = schedule,
             session = session,
-            onGameCompletedChange = onGameCompletedChange
+            onGameCompletedChange = onGameCompletedChange,
+            onScoreClick = onScoreClick
         )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Game stats summary
+        GameStats(session = session)
 
         Spacer(Modifier.height(16.dp))
 
@@ -219,16 +239,35 @@ private fun PlayerStats(playerStats: Map<String, PlayerStats>) {
 }
 
 @Composable
+private fun GameStats(session: Session) {
+    val totalShuttles = session.matchResults.values.sumOf { it.shuttlesUsed }
+    if (totalShuttles > 0) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(4.dp)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Game Stats", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text("Total shuttles used: $totalShuttles")
+            }
+        }
+    }
+}
+
+@Composable
 private fun GameScheduleList(
     modifier: Modifier = Modifier,
     schedule: List<List<Match>>,
     session: Session,
-    onGameCompletedChange: (Int, Boolean) -> Unit
+    onGameCompletedChange: (Int, Boolean) -> Unit,
+    onScoreClick: (String, List<String>, List<String>) -> Unit
 ) {
     LazyColumn(
         modifier = modifier
     ) {
         itemsIndexed(schedule) { gameIndex, courtsSchedule ->
+            val matchIdPrefix = "${session.id}-G$gameIndex"
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -257,7 +296,16 @@ private fun GameScheduleList(
                     Spacer(Modifier.height(8.dp))
 
                     courtsSchedule.forEachIndexed { courtIndex, match ->
-                        GameMatchRow(courtIndex, match)
+                        val matchId = "$matchIdPrefix-C$courtIndex"
+                        GameMatchRow(
+                            courtIndex = courtIndex,
+                            match = match,
+                            isSessionLocked = session.isLocked,
+                            matchResult = session.matchResults[matchId],
+                            onScoreClick = {
+                                onScoreClick(matchId, match.teamA, match.teamB)
+                            }
+                        )
                     }
                 }
             }
@@ -266,17 +314,42 @@ private fun GameScheduleList(
 }
 
 @Composable
-private fun GameMatchRow(courtIndex: Int, match: Match) {
+private fun GameMatchRow(
+    courtIndex: Int,
+    match: Match,
+    isSessionLocked: Boolean,
+    matchResult: MatchResult?,
+    onScoreClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-        Text(
-            "Court ${courtIndex + 1}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Court ${courtIndex + 1}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            if (matchResult != null) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_shuttle),
+                    contentDescription = "Shuttle icon",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp) // Adjust size as needed
+                )
+                Text(
+                    "${matchResult.shuttlesUsed}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Button(onClick = onScoreClick, enabled = isSessionLocked) {
+                Text("Score")
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -287,9 +360,21 @@ private fun GameMatchRow(courtIndex: Int, match: Match) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 PlayerTag(match.teamA[0])
                 PlayerTag(match.teamA[1])
+                if (matchResult != null) {
+                    Text(
+                        "${matchResult.teamAScore}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
             Text("vs", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (matchResult != null) {
+                    Text(
+                        "${matchResult.teamBScore}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
                 PlayerTag(match.teamB[0])
                 PlayerTag(match.teamB[1])
             }

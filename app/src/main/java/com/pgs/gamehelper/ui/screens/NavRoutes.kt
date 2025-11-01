@@ -11,4 +11,14 @@ sealed class NavRoutes(val route: String) {
             const val routePattern = "schedule/{sessionId}"
         }
     }
+    data class ScoreEntry(
+        val sessionId: String,
+        val matchId: String,
+        val teamA: List<String>,
+        val teamB: List<String>
+    ) : NavRoutes("score_entry/$sessionId/$matchId/${teamA.joinToString(",")}/${teamB.joinToString(",")}") {
+        companion object {
+            const val routePattern = "score_entry/{sessionId}/{matchId}/{teamA}/{teamB}"
+        }
+    }
 }
