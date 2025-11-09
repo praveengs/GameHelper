@@ -5,3 +5,4 @@ data class Match(
     val teamB: List<String>,
     val resting:List<String> = emptyList()
 )
+

@@ -1,8 +1,12 @@
 package com.pgs.gamehelper.schedule
 
+import com.pgs.gamehelper.models.Game
 import com.pgs.gamehelper.models.Match
+import com.pgs.gamehelper.models.MatchV2
+import com.pgs.gamehelper.models.Player
 import com.pgs.gamehelper.models.PlayerStats
-import java.util.Random
+import com.pgs.gamehelper.models.Team
+import kotlin.random.Random
 
 object Scheduler {
 
@@ -113,5 +117,146 @@ object Scheduler {
             }
         }
         return playerStats
+    }
+
+    fun generateScheduleV2(players: List<Player>, courts: Int, totalGames: Int, seed: Long): List<MatchV2> {
+        if (players.size < 4 || (players.size < courts * 4)) {
+            return emptyList()
+        }
+        val random = Random(seed)
+        val partnerHistory = mutableMapOf<Pair<Player, Player>, Int>()
+        val opponentHistory = mutableMapOf<Pair<Player, Player>, Int>()
+        val gameCounts = players.associateWith { 0 }.toMutableMap()
+
+        var lastGamePlayers = emptySet<Player>()
+
+        fun addPair(map: MutableMap<Pair<Player, Player>, Int>, a: Player, b: Player) {
+            val key = if (a.name < b.name) a to b else b to a
+            map[key] = map.getOrDefault(key, 0) + 1
+        }
+
+        val allGames = mutableListOf<MatchV2>()
+
+        repeat(totalGames) { gameIndex ->
+            // Sort players by play count + random jitter + penalty if they just played
+            val sortedPlayers = players.sortedBy {
+                val restPenalty = if (it in lastGamePlayers) 1.5 else 0.0
+                gameCounts[it]!! + restPenalty + Random.nextDouble(0.0, 0.3)
+            }
+
+            val chosen = sortedPlayers.take(4).shuffled(random)
+
+            // Try all possible team combinations
+            val possibleTeams = listOf(
+                Team(chosen[0], chosen[1]) to Team(chosen[2], chosen[3]),
+                Team(chosen[0], chosen[2]) to Team(chosen[1], chosen[3]),
+                Team(chosen[0], chosen[3]) to Team(chosen[1], chosen[2])
+            )
+
+            val bestPairing = possibleTeams.minByOrNull { (t1, t2) ->
+                val partnerScore =
+                    partnerHistory.getOrDefault(t1.playerOne to t1.playerTwo, 0) +
+                            partnerHistory.getOrDefault(t2.playerOne to t2.playerTwo, 0)
+                val opponentScore =
+                    listOf(
+                        opponentHistory.getOrDefault(t1.playerOne to t2.playerOne, 0),
+                        opponentHistory.getOrDefault(t1.playerOne to t2.playerTwo, 0),
+                        opponentHistory.getOrDefault(t1.playerTwo to t2.playerOne, 0),
+                        opponentHistory.getOrDefault(t1.playerTwo to t2.playerTwo, 0)
+                    ).sum()
+                // Add mild penalty if any player just played last game
+                val restPenalty = (listOf(t1.playerOne, t1.playerTwo, t2.playerOne, t2.playerTwo).count { it in lastGamePlayers }) * 2
+                partnerScore + opponentScore + restPenalty
+            }!!
+
+            val (teamA, teamB) = bestPairing
+            val playingNow = setOf(teamA.playerOne, teamA.playerTwo, teamB.playerOne, teamB.playerTwo)
+            val resting = players.filterNot { it in playingNow }
+            allGames += MatchV2(teamA, teamB, resting)
+
+            // Update histories
+            addPair(partnerHistory, teamA.playerOne, teamA.playerTwo)
+            addPair(partnerHistory, teamB.playerOne, teamB.playerTwo)
+            listOf(
+                teamA.playerOne to teamB.playerOne, teamA.playerOne to teamB.playerTwo,
+                teamA.playerTwo to teamB.playerOne, teamA.playerTwo to teamB.playerTwo
+            ).forEach { addPair(opponentHistory, it.first, it.second) }
+
+            // Update game counts
+            playingNow.forEach { gameCounts[it] = gameCounts[it]!! + 1 }
+
+            // Save current players to penalize in next iteration
+            lastGamePlayers = playingNow
+        }
+
+        return allGames
+    }
+
+    fun generateScheduleV3(players: List<Player>, courts: Int, totalGames: Int, seed: Long): List<MatchV2> {
+        if (players.size < 4 || (players.size < courts * 4)) {
+            return emptyList()
+        }
+        val random = Random(seed)
+        val partnerHistory = mutableMapOf<Team, Int>()
+        val opponentHistory = mutableMapOf<Team, Int>()
+        val gameCounts = players.associateWith { 0 }.toMutableMap()
+
+        var lastGamePlayers = emptySet<Player>()
+
+        val allGames = mutableListOf<MatchV2>()
+
+        repeat(totalGames) { gameIndex ->
+            // Sort players by play count + random jitter + penalty if they just played
+            val sortedPlayers = players.sortedBy {
+                val restPenalty = if (it in lastGamePlayers) 1.5 else 0.0
+                gameCounts[it]!! + restPenalty + Random.nextDouble(0.0, 0.3)
+            }
+
+            val chosen = sortedPlayers.take(4).shuffled(random)
+
+            // Try all possible team combinations
+            val possibleTeams = listOf(
+                Team(chosen[0], chosen[1]) to Team(chosen[2], chosen[3]),
+                Team(chosen[0], chosen[2]) to Team(chosen[1], chosen[3]),
+                Team(chosen[0], chosen[3]) to Team(chosen[1], chosen[2])
+            )
+
+            val bestPairing = possibleTeams.minByOrNull { (t1, t2) ->
+                val partnerScore =
+                    partnerHistory.getOrDefault(t1.playerOne to t1.playerTwo, 0) +
+                            partnerHistory.getOrDefault(t2.playerOne to t2.playerTwo, 0)
+                val opponentScore =
+                    listOf(
+                        opponentHistory.getOrDefault(t1.playerOne to t2.playerOne, 0),
+                        opponentHistory.getOrDefault(t1.playerOne to t2.playerTwo, 0),
+                        opponentHistory.getOrDefault(t1.playerTwo to t2.playerOne, 0),
+                        opponentHistory.getOrDefault(t1.playerTwo to t2.playerTwo, 0)
+                    ).sum()
+                // Add mild penalty if any player just played last game
+                val restPenalty = (listOf(t1.playerOne, t1.playerTwo, t2.playerOne, t2.playerTwo).count { it in lastGamePlayers }) * 2
+                partnerScore + opponentScore + restPenalty
+            }!!
+
+            val (teamA, teamB) = bestPairing
+            val playingNow = setOf(teamA.playerOne, teamA.playerTwo, teamB.playerOne, teamB.playerTwo)
+            val resting = players.filterNot { it in playingNow }
+            allGames += MatchV2(teamA, teamB, resting)
+
+            // Update histories
+            addPair(partnerHistory, teamA.playerOne, teamA.playerTwo)
+            addPair(partnerHistory, teamB.playerOne, teamB.playerTwo)
+            listOf(
+                teamA.playerOne to teamB.playerOne, teamA.playerOne to teamB.playerTwo,
+                teamA.playerTwo to teamB.playerOne, teamA.playerTwo to teamB.playerTwo
+            ).forEach { addPair(opponentHistory, it.first, it.second) }
+
+            // Update game counts
+            playingNow.forEach { gameCounts[it] = gameCounts[it]!! + 1 }
+
+            // Save current players to penalize in next iteration
+            lastGamePlayers = playingNow
+        }
+
+        return allGames
     }
 }
